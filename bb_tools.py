@@ -1,34 +1,30 @@
 '''
-Alguns problemas:
-
-- ainda falta incluir o upper e lower bound na parada, ou seja, a poda por limitante
+    Algoritmo Branch and Bound
+    
+    Caio Lucas da Silva Chacon - 20200025769
+    Luiz Fernando Costa dos Santos - 20200025446 
 '''
-from ast import arg
 from mip import (Model, 
                 MAXIMIZE, 
                 CONTINUOUS,
                 CBC,
                 xsum)
 from math import ceil, floor
-import sys 
 
-
-is_int = lambda x : x//1 == x # Função para definir se o numero é inteiro ou não (fracionário)
-dis_0_5 = lambda x: abs(x - 0.5) # Função para definir qual a distancia do numero para 0.5 (o professor pede issp)
+is_int = lambda x : x//1 == x # Função para definir se o numero é inteiro (True) ou fracionário (False)
+dis_0_5 = lambda x: abs(x - 0.5) # Função para definir qual a distancia de um numero para 0.5 
 
 class Node:
     '''
-        Classe que serve para armazenar as variaveis x e z, alem do status que vem do MIP
+        Classe que serve para armazenar as variaveis x, a solução z, as restrições e as operações
     '''
-    def __init__(self, x: list, z: float, status, constr, op, nb_var):
+    def __init__(self, x: list, z: float, constr: list, op: list):
         self.x = x
         self.z = z
-        self.status = status
         self.constr = constr
         self.op = op
-        self.nb_var = nb_var
 
-    def __repr__(self) -> str: # esse método serve so pra printar bonitinho
+    def __repr__(self) -> str: 
         return "\nx = " + str(self.x) + "\nz = " + str(self.z)
 
 def read_instance(filePath: str) -> tuple:
@@ -67,7 +63,7 @@ def create_and_solve_model_LP(nb_var: int, nb_constr: int, fo: list, constr: lis
     """ 
     model = Model(sense=MAXIMIZE, solver_name=CBC)
 
-    x = [model.add_var( var_type=CONTINUOUS,
+    x = [model.add_var( var_type=CONTINUOUS, lb=0.0, ub=1.0,
                         name="x_"+str(i))
                         for i in range(nb_var)]
     
@@ -82,12 +78,11 @@ def create_and_solve_model_LP(nb_var: int, nb_constr: int, fo: list, constr: lis
             model += xsum(x[i]*constr[c][i] for i in range(nb_var)) == constr[c][-1]
 
     model.verbose = 0
-    status = model.optimize()
-    
+    _ = model.optimize()
     x = [v.x for v in model.vars]
     z = model.objective_value
 
-    no = Node(x, z, status, constr, op, nb_var)
+    no = Node(x, z, constr, op)
 
     return no
 
@@ -95,14 +90,15 @@ def choose_to_cut(x) -> int:
     '''
         Recebe as variaveis x e escolhe qual deve ser a escolhida para fazer a ramificação
     '''
-    minimuns = list(map(dis_0_5, x))
-    m = sys.maxsize
+    distances = list(map(dis_0_5, x)) # Distancia de cada variavel para 0.5
+
+    m = float("inf")
     argmin = 0
-    for i in range(len(minimuns)):
-        if is_int(x[i]):
-            continue
-        if minimuns[i] < m:
-            m = minimuns[i]
+    for i in range(len(distances)):
+        if (not is_int(x[i])) and (distances[i] < m): 
+        # se a variavel for inteira AND 
+        # se ela tiver uma distancia menor que a menor distancia 
+            m = distances[i]
             argmin = i
             
     return argmin
@@ -113,19 +109,18 @@ def cut(var) -> tuple:
     '''
     return ceil(var), floor(var)
 
-def create_constr(no, var, lim, op):
+def create_constr(no: Node, nb_var: int, var: int, lim: int, op: int) -> tuple:
     '''
         Serve para criar uma nova restrição para o modelo
         dado a variavel de ramifiação, o valor floor e ceil dela e o numero de variaveis
     '''
 
     cons = [] # restrição 
-    for i in range(no.nb_var):
+    for i in range(nb_var):
         if i == var:
             cons.append(1)
         else:
-            cons.append(0)
-        
+            cons.append(0)   
     cons.append(lim)
 
     new_constr = no.constr[:]
@@ -135,100 +130,65 @@ def create_constr(no, var, lim, op):
     new_op.append(op)
     return new_constr, new_op
 
-def select_solution(sol_z):
-    m = 0
-    argmax = 0
-    for i in range(len(sol_z)):
-        if sol_z[i] > m:
-            m = sol_z[i]
-            argmax = i
-    
-    return argmax
-        
-
-def execute(nb_var, nb_constr, fo, constr):
+def execute(nb_var: int, nb_constr: int, fo: list, constr: list, verbose=True):
     '''
         Roda o branch and bound
     '''
-    ### Criando o primeiro modelo, o P0
+    # Criando o primeiro modelo
     op = [0]*nb_constr
     no = create_and_solve_model_LP(nb_var, nb_constr, fo, constr, op)
 
-    # só criei essas variaveis, mas ainda precisamos ver como encaixar elas
-    upper_bound = float(no.z)
     lower_bound = float("-inf")
 
-    q = [] #FILA 
+    q = [] # Estrutura de dados Fila (queue por isso o nome q)
     q.append(no)
 
-    solution_x = []
-    solution_z = []
+    solution = None
+    solution_z = 0
 
-    while len(q) != 0:
+    while len(q) > 0:
         i = q[0] 
-
-        print("-"*150)
-        print(f"NOVA ITER - No da vez = {i.x} {i.z}")
-        print("-"*150)
-        print("TAMANHO DA FILA: ", len(q)) # tamanho da fila  
-        
-         
-        
-        
-        if i.x == [None]*nb_var:# Poda por inviabilidade
-            print("INFEASIBLEEEEEEEEEEEEEEEEEEe") 
-            q.pop(0)
-             
-             
-            continue
     
-        elif all(list(map(is_int,i.x))): # se todas as variaveis forem inteiras
+        if i.x == [None]*nb_var:# Poda por inviabilidade
+            poda = "Poda por inviabilidade"
+            q.pop(0)
+    
+        elif all(list(map(is_int,i.x))): # Poda por integralidade
             if i.z > lower_bound:
                 lower_bound = i.z
-            print("INTREGRALIDADEEEEEEEEEEEEEEEe")
+            poda = "Poda por integralidade"
             q.pop(0)
-            
-            solution_z.append(i.z)
-            solution_x.append(i.x)
-            
-            continue
-        else:
-            if i.z < lower_bound:
-                print("LIMITANTEEEEEEEEEEEEEEEEEEEe")
-                q.pop(0)
-                 
-                 
-                continue
-            
-            var = choose_to_cut(i.x)
-            up, down = cut(i.x[var])
-            
-            #print("variavel escolhida ", var)
-
-            constr_l, op_l = create_constr(i, var, down, 0)  
-            constr_r, op_r = create_constr(i, var, up, 1)  
-            
-            nb_constr = len(constr_l)
-            no_left = create_and_solve_model_LP(nb_var, nb_constr, fo, constr_l, op_l)
-
-            print("\nNÓ ESQUERNO")
-            print("\nENTRADA: ", nb_var, nb_constr, fo, constr_l, op_l, "\n")
-            print("\nRESULTADO: ",no_left.x, no_left.z)
-
-             
-            nb_constr = len(constr_r)
-            no_right = create_and_solve_model_LP(nb_var, nb_constr, fo, constr_r, op_r)
-    
-            print("\nNÓ DIREITO")
-            print("\nENTRADA: ", nb_var, nb_constr, fo, constr_r, op_r, "\n")
-            print("\nRESULTADO: ", no_right.x, no_right.z)
-            
-
-            q.append(no_left)
-            q.append(no_right)
-            
+            if i.z > solution_z:
+                solution_z = i.z
+                solution = i
+        
+        elif i.z < lower_bound: # Poda por limitante
+            poda = "Poda por limitante"
             q.pop(0)
         
-    ind = select_solution(solution_z)
-    print("ACABOU")
-    return solution_x[ind], solution_z[ind]
+        else: # Quando as variaveis não são inteiras
+            poda = ""
+            var = choose_to_cut(i.x)
+            up, down = cut(i.x[var])
+
+            for j, num in enumerate([down, up]):
+                constr, op = create_constr(i,nb_var, var, num, j)      
+                new_no = create_and_solve_model_LP(nb_var, nb_constr, fo, constr, op)    
+                q.append(new_no)
+
+            nb_constr = len(constr)
+            q.pop(0)
+        
+        if verbose:
+            print("-"*100)
+            print(f"\nNo da iteração atual: {i}") 
+            print(poda)        
+        
+    if solution_z == 0:
+        print("\nNão existe solução ótima inteira!")
+        return None
+
+    print("-"*100)
+    print("\nSolução ótima encontrada!")
+    
+    return solution

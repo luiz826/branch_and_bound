@@ -1,12 +1,12 @@
+'''
+    Algoritmo Branch and Bound
+
+    Caio Lucas da Silva Chacon - 20200025769
+    Luiz Fernando Costa dos Santos - 20200025446 
+'''
 from bb_tools import *
-import os
+from sys import argv
 
-os.chdir("./data")
-nb_var, nb_constr, fo, constr = read_instance("p1.txt")
-sol = execute(nb_var, nb_constr, fo, constr)
-print(sol)
-
-
-nb_var, nb_constr, fo, constr = read_instance("p2.txt")
-sol = execute(nb_var, nb_constr, fo, constr)
+nb_var, nb_constr, fo, constr = read_instance("./data/"+argv[1])
+sol = execute(nb_var, nb_constr, fo, constr, False)
 print(sol)
