@@ -3,7 +3,7 @@ Alguns problemas:
 
 - ainda falta incluir o upper e lower bound na parada, ou seja, a poda por limitante
 '''
-from xml.dom import NO_DATA_ALLOWED_ERR
+from ast import arg
 from mip import (Model, 
                 MAXIMIZE, 
                 CONTINUOUS,
@@ -29,7 +29,7 @@ class Node:
         self.nb_var = nb_var
 
     def __repr__(self) -> str: # esse método serve so pra printar bonitinho
-        return "Status = " + str(self.status) + "\nx = " + str(self.x) + "\nz = " + str(self.z)
+        return "\nx = " + str(self.x) + "\nz = " + str(self.z)
 
 def read_instance(filePath: str) -> tuple:
     '''
@@ -53,7 +53,7 @@ def read_instance(filePath: str) -> tuple:
     return nb_var, nb_constr, fo, constr
 
 
-def create_and_solve_model_LP(nb_var: int, nb_constr: int, fo: list, constr: list, op) -> tuple:
+def create_and_solve_model_LP(nb_var: int, nb_constr: int, fo: list, constr: list, op) -> Node:
     """
         Serve para criar um modelo no MIP mais facilmente
 
@@ -62,14 +62,15 @@ def create_and_solve_model_LP(nb_var: int, nb_constr: int, fo: list, constr: lis
                 0 se <=
                 1 se >= 
                 2 se ==
-    """
+
+        p = é o contador do nó
+    """ 
     model = Model(sense=MAXIMIZE, solver_name=CBC)
 
-
-    x = [model.add_var( var_type=CONTINUOUS, lb=0.0,
+    x = [model.add_var( var_type=CONTINUOUS,
                         name="x_"+str(i))
                         for i in range(nb_var)]
-
+    
     model.objective = xsum(fo[i]*x[i] for i in range(nb_var))
 
     for c in range(nb_constr):
@@ -134,6 +135,17 @@ def create_constr(no, var, lim, op):
     new_op.append(op)
     return new_constr, new_op
 
+def select_solution(sol_z):
+    m = 0
+    argmax = 0
+    for i in range(len(sol_z)):
+        if sol_z[i] > m:
+            m = sol_z[i]
+            argmax = i
+    
+    return argmax
+        
+
 def execute(nb_var, nb_constr, fo, constr):
     '''
         Roda o branch and bound
@@ -143,51 +155,72 @@ def execute(nb_var, nb_constr, fo, constr):
     no = create_and_solve_model_LP(nb_var, nb_constr, fo, constr, op)
 
     # só criei essas variaveis, mas ainda precisamos ver como encaixar elas
-    upper_bound = float("inf")
+    upper_bound = float(no.z)
     lower_bound = float("-inf")
 
     q = [] #FILA 
     q.append(no)
 
-    # Aqui tu roda o código e ve no terminal que fica mais facil de entender
+    solution_x = []
+    solution_z = []
+
     while len(q) != 0:
         i = q[0] 
+
+        print("-"*150)
+        print(f"NOVA ITER - No da vez = {i.x} {i.z}")
+        print("-"*150)
+        print("TAMANHO DA FILA: ", len(q)) # tamanho da fila  
         
-        print("-"*150)
-        print(f"NOVA ITER - No da vez = {i.x}")
-        print("-"*150)
-        print("TAMANHO DA FILA: ", len(q)) # tamanho da fila     
+         
+        
+        
         if i.x == [None]*nb_var:# Poda por inviabilidade
             print("INFEASIBLEEEEEEEEEEEEEEEEEEe") 
             q.pop(0)
+             
+             
             continue
-        
-        if all(list(map(is_int,i.x))): # se todas as variaveis forem inteiras
-            lower_bound = i.z 
+    
+        elif all(list(map(is_int,i.x))): # se todas as variaveis forem inteiras
+            if i.z > lower_bound:
+                lower_bound = i.z
             print("INTREGRALIDADEEEEEEEEEEEEEEEe")
             q.pop(0)
+            
+            solution_z.append(i.z)
+            solution_x.append(i.x)
+            
             continue
         else:
+            if i.z < lower_bound:
+                print("LIMITANTEEEEEEEEEEEEEEEEEEEe")
+                q.pop(0)
+                 
+                 
+                continue
+            
             var = choose_to_cut(i.x)
             up, down = cut(i.x[var])
-            upper_bound = i.z
-            print("variavel escolhida ", var)
+            
+            #print("variavel escolhida ", var)
 
             constr_l, op_l = create_constr(i, var, down, 0)  
             constr_r, op_r = create_constr(i, var, up, 1)  
-
+            
             nb_constr = len(constr_l)
             no_left = create_and_solve_model_LP(nb_var, nb_constr, fo, constr_l, op_l)
 
             print("\nNÓ ESQUERNO")
-            #print("\nENTRADA: ", nb_var, nb_constr, fo, constr_l, op_l, "\n")
+            print("\nENTRADA: ", nb_var, nb_constr, fo, constr_l, op_l, "\n")
             print("\nRESULTADO: ",no_left.x, no_left.z)
 
+             
             nb_constr = len(constr_r)
             no_right = create_and_solve_model_LP(nb_var, nb_constr, fo, constr_r, op_r)
     
             print("\nNÓ DIREITO")
-            #print("\nENTRADA: ", nb_var, nb_constr, fo, constr_r, op_r, "\n")
+            print("\nENTRADA: ", nb_var, nb_constr, fo, constr_r, op_r, "\n")
             print("\nRESULTADO: ", no_right.x, no_right.z)
             
 
@@ -195,6 +228,7 @@ def execute(nb_var, nb_constr, fo, constr):
             q.append(no_right)
             
             q.pop(0)
-
-
+        
+    ind = select_solution(solution_z)
     print("ACABOU")
+    return solution_x[ind], solution_z[ind]
